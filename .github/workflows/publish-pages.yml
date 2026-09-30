@@ -1,0 +1,36 @@
+# Publishes the Proposal Builder to GitHub Pages.
+# It NEVER runs automatically. Start it by hand: Actions tab > "Publish Proposal Builder" > Run workflow.
+name: Publish Proposal Builder
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the single-file app
+        run: python3 proposal-tool/build_single.py
+      - name: Stage the site
+        run: |
+          mkdir site
+          cp proposal-tool/dist/proposal-builder.html site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
