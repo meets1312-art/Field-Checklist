@@ -1,5 +1,20 @@
 # Field-Checklist
 
+## Proposal Builder (`proposal-tool/index.html`)
+
+A browser-only tool for the technical-proposal sections that change with every RFP. Download `proposal-tool/index.html` and double-click it to open it in Edge. It needs no install and no admin rights, and nothing is uploaded anywhere.
+
+1. **Schedule of Work.** Edit tasks, dates and milestones, and the chart updates. Repeat an annual cycle across a multi-year contract.
+2. **Experience.** Keep a library of projects, type the RFP's keywords to score them, and tick the best fits for the proposal table.
+3. **Equipment.** Editable PathRunner description and subsystem list, so old equipment wording is gone.
+4. **Export.** Copy into Word, or download a `.doc`. **Save file** keeps all your edits as a `.json` you can reopen later.
+
+Starting data comes from the Thurston County draft. Edit it freely.
+
+---
+
+# EOD Field Sign-Off (`index.html`)
+
 EOD Field Sign-Off: a daily checklist that runs in the browser. You tap to initial each item, and it prints a PDF summary at the end of the day.
 
 The whole app is one file, `index.html`. It needs no build step, no accounts and no paid hosting.

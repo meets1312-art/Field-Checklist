@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proposal Builder</title>
+<style>
+  :root { --ink:#1b2430; --muted:#667085; --line:#d9dee7; --bg:#f4f6f9; --card:#fff; --accent:#1f4e79; --accent-soft:#e6eef7; --ok:#1c7a4d; --warn:#b54708; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Segoe UI, system-ui, -apple-system, Arial, sans-serif; font-size:14px; color:var(--ink); background:var(--bg); }
+  header { background:var(--accent); color:#fff; padding:12px 20px; display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  header h1 { font-size:17px; margin:0 12px 0 0; font-weight:600; }
+  header input { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.35); color:#fff; border-radius:6px; padding:6px 9px; font-size:13px; min-width:180px; }
+  header input::placeholder { color:rgba(255,255,255,.65); }
+  .spacer { flex:1; }
+  button, .btn { font:inherit; cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:6px; padding:6px 11px; }
+  button:hover { background:var(--accent-soft); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.primary:hover { background:#173c5c; }
+  header button { background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.35); }
+  header button:hover { background:rgba(255,255,255,.25); }
+  button.icon { padding:3px 8px; }
+  button.danger:hover { background:#fde8e8; color:#b42318; }
+  nav { display:flex; gap:2px; padding:10px 20px 0; border-bottom:1px solid var(--line); background:#fff; overflow-x:auto; }
+  nav button { border:none; border-bottom:3px solid transparent; border-radius:0; background:none; padding:9px 16px; font-weight:600; color:var(--muted); white-space:nowrap; }
+  nav button.on { color:var(--accent); border-bottom-color:var(--accent); }
+  main { padding:18px 20px 60px; max-width:1200px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .card h2 { margin:0 0 4px; font-size:16px; }
+  .hint { color:var(--muted); font-size:12.5px; margin:0 0 12px; }
+  .row-tools { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+  table.ed { width:100%; border-collapse:collapse; }
+  table.ed th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:4px 6px; }
+  table.ed td { padding:3px 4px; vertical-align:top; }
+  table.ed input[type=text], table.ed input[type=date], table.ed input[type=number], table.ed textarea, .card textarea, .card input.wide { width:100%; font:inherit; padding:5px 7px; border:1px solid var(--line); border-radius:5px; background:#fff; }
+  table.ed textarea { min-height:34px; resize:vertical; }
+  .card textarea { min-height:70px; }
+  .scroll { overflow-x:auto; }
+  .badge { display:inline-block; min-width:22px; text-align:center; padding:1px 7px; border-radius:99px; background:var(--accent-soft); color:var(--accent); font-weight:700; font-size:12px; }
+  .badge.zero { background:#eef0f3; color:var(--muted); }
+  .preview { background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; overflow-x:auto; }
+  .preview h3, .preview h4 { margin:14px 0 6px; }
+  .checks label { margin-right:16px; }
+  .note { background:#fff8e6; border:1px solid #f0d58a; color:#7a5200; border-radius:8px; padding:9px 12px; font-size:12.5px; margin-bottom:12px; }
+  .toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#1b2430; color:#fff; padding:9px 16px; border-radius:8px; opacity:0; pointer-events:none; transition:opacity .2s; }
+  .toast.show { opacity:1; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:760px){ .grid2 { grid-template-columns:1fr; } header input { min-width:0; flex:1 1 140px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Proposal Builder</h1>
+  <input id="pClient" placeholder="Client (e.g. Thurston County)">
+  <input id="pTitle" placeholder="RFP title / number">
+  <span class="spacer"></span>
+  <button id="btnSave" title="Download all your edits as a file you can reopen later">Save file</button>
+  <button id="btnLoad">Open file</button>
+  <button id="btnReset" title="Restore the built-in starting data">Reset</button>
+  <input type="file" id="fileIn" accept=".json" hidden>
+</header>
+<nav id="tabs">
+  <button data-tab="schedule">1 · Schedule of Work</button>
+  <button data-tab="experience">2 · Experience</button>
+  <button data-tab="equipment">3 · Equipment</button>
+  <button data-tab="export">4 · Export to Word</button>
+</nav>
+<main>
+  <section id="tab-schedule" hidden>
+    <div class="card">
+      <h2>Tasks and milestones</h2>
+      <p class="hint">Edit the dates and the chart below updates. Set start and end to the same day to show a milestone (◆). Your edits are saved in this browser automatically.</p>
+      <div class="row-tools">
+        <button class="primary" id="addTask">+ Add task</button>
+        <button id="addMile">+ Add milestone</button>
+        <span style="color:var(--muted)">Repeat this cycle for</span>
+        <input type="number" id="repN" value="3" min="1" max="10" style="width:60px;padding:5px">
+        <span style="color:var(--muted)">more years</span>
+        <button id="repBtn">Repeat</button>
+        <button id="loadSched" title="Replace tasks with the annual field-season starter used in the Thurston draft">Load starter schedule</button>
+      </div>
+      <div class="scroll"><table class="ed" id="taskTable"></table></div>
+    </div>
+    <div class="card">
+      <h2>Chart preview</h2>
+      <div class="preview" id="ganttPrev"></div>
+    </div>
+  </section>
+
+  <section id="tab-experience" hidden>
+    <div class="card">
+      <h2>Find the best-fit projects</h2>
+      <p class="hint">Type what this RFP cares about (states, software, keywords). Each project gets a match score. Then tick the ones to include.</p>
+      <div class="row-tools">
+        <input class="wide" id="kw" style="flex:1;min-width:220px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px" placeholder="e.g. Cartegraph, WA, CRAB, StreetSaver, county">
+        <button id="sortMatch">Sort by match</button>
+        <span style="color:var(--muted)">Include top</span>
+        <input type="number" id="topN" value="6" min="1" max="30" style="width:60px;padding:5px">
+        <button id="pickTop">Tick them</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Project library</h2>
+      <p class="hint">Add every project you might use. Only ticked projects appear in the proposal table.</p>
+      <div class="row-tools"><button class="primary" id="addExp">+ Add project</button><span id="expCount" style="color:var(--muted)"></span></div>
+      <div class="scroll"><table class="ed" id="expTable"></table></div>
+    </div>
+    <div class="card">
+      <h2>Table preview</h2>
+      <div class="preview" id="expPrev"></div>
+    </div>
+  </section>
+
+  <section id="tab-equipment" hidden>
+    <div class="card">
+      <h2>Data collection equipment</h2>
+      <p class="hint">Starting text is taken from your Thurston County draft, with the Thurston-specific parts removed. Use <b>{v}</b> where the vehicle name should appear.</p>
+      <div class="grid2">
+        <div><label>Vehicle name<br><input class="wide" id="eqVehicle"></label></div>
+        <div></div>
+      </div>
+      <p style="margin:12px 0 4px"><label>Introduction paragraph<br><textarea id="eqIntro"></textarea></label></p>
+      <h3 style="margin:14px 0 4px;font-size:14px">Subsystems on the vehicle</h3>
+      <div class="scroll"><table class="ed" id="hwTable"></table></div>
+      <div class="row-tools"><button id="addHw">+ Add subsystem</button></div>
+      <h3 style="margin:14px 0 4px;font-size:14px">Processing and delivery software</h3>
+      <div class="scroll"><table class="ed" id="swTable"></table></div>
+      <div class="row-tools"><button id="addSw">+ Add software</button></div>
+    </div>
+    <div class="card"><h2>Preview</h2><div class="preview" id="eqPrev"></div></div>
+  </section>
+
+  <section id="tab-export" hidden>
+    <div class="card">
+      <h2>Export</h2>
+      <div class="note">This creates Word-openable content. For your final proposal, the cleanest path is <b>Copy for Word</b> and paste into your proposal template so it takes on your fonts and styles. <b>Download .doc</b> gives a standalone file that Word opens.</div>
+      <div class="checks row-tools">
+        <label><input type="checkbox" id="xSched" checked> Schedule of work</label>
+        <label><input type="checkbox" id="xExp" checked> Experience table</label>
+        <label><input type="checkbox" id="xEq" checked> Equipment</label>
+      </div>
+      <div class="row-tools">
+        <button class="primary" id="copyWord">Copy for Word</button>
+        <button id="dlDoc">Download .doc</button>
+      </div>
+      <div class="preview" id="exportPrev"></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const KEY = "proposalBuilder.v1";
+const uid = () => Math.random().toString(36).slice(2, 9);
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+
+function defaults() {
+  return {
+    tab: "schedule",
+    project: { client: "", title: "" },
+    tasks: starterTasks(),
+    exp: starterExp(),
+    equip: starterEquip(),
+    kw: ""
+  };
+}
+function starterTasks() {
+  const y = 2026;
+  const T = (name, s, e, res) => ({ id: uid(), name, start: s, end: e, res });
+  return [
+    T("Project kick-off and QA/QC plan approval", `${y}-05-01`, `${y}-05-31`, "Project Manager"),
+    T("Route planning and DMI calibration", `${y}-05-15`, `${y}-06-15`, "Field lead, QA/QC lead"),
+    T("Field data collection (dry season)", `${y}-06-01`, `${y}-09-30`, "PathRunner crews"),
+    T("Distress rating and data processing", `${y}-06-15`, `${y}-10-31`, "Raters, data specialists"),
+    T("Weekly data submittals", `${y}-06-22`, `${y}-10-31`, "Data specialists"),
+    T("Final deliverables", `${y}-11-15`, `${y}-11-15`, "Project Manager")
+  ];
+}
+function starterExp() {
+  const P = (year, agency, lm, pms, dc, eng, am, tags = "", notes = "") =>
+    ({ id: uid(), on: false, year, agency, lm, pms, dc, eng, am, tags, notes });
+  return [
+    P("2024", "City of San Antonio, TX", 2000, "Cartegraph", 1, 1, 0, "TX city"),
+    P("2025", "City of Florence, TX", 346, "Cartegraph", 1, 1, 0, "TX city"),
+    P("2019–2024", "Riverside County, CA", 2200, "StreetSaver®", 1, 1, 0, "CA county"),
+    P("2021", "Snohomish County, WA", 1550, "Cartegraph", 1, 1, 0, "WA county CRAB StreetSaver", "Partner since 2013. Integrates Cartegraph, StreetSaver and WA CRAB reporting."),
+    P("2019–2024", "City and County of San Francisco, CA", 275, "StreetSaver®", 1, 0, 0, "CA city county"),
+    P("2022", "City of Palmdale, CA", 533, "PAVER/Lucity", 1, 1, 1, "CA city"),
+    P("2022", "City of Palm Desert, CA", 256, "PAVER/Cartegraph", 1, 1, 1, "CA city"),
+    P("2020", "City of San Marcos, CA", 400, "StreetSaver®", 1, 1, 0, "CA city")
+  ];
+}
+function starterEquip() {
+  const H = (name, desc) => ({ id: uid(), name, desc });
+  return {
+    vehicle: "PathRunner",
+    intro: "We will perform automated pavement condition surveys using our {v} data collection vehicles, which capture distress, roughness (IRI) and right-of-way imagery in a single pass. The {v} incorporates the following subsystems:",
+    hw: [
+      H("3D-PAS (3D Pavement Analysis System)", "Single-camera, single-laser design providing high-resolution 2D intensity and 3D elevation images of the road surface. Captures transverse profiles every 1/4 inch at highway speeds, with a depth range of nearly 20 inches and full-lane width coverage exceeding 14 feet."),
+      H("Inertial Profiler", "Laser profiling system conforming to ASTM E950-09 and AASHTO MP328-14, certified by TTI (TxDOT Tex 1001-S), MNDOT and NCAT (AASHTO R56-14). Captures longitudinal profiles for IRI calculation per AASHTO R43-13 and ASTM E1926-08."),
+      H("Right-of-Way Cameras", "Two forward-facing and one rear-facing HD+ cameras (combined resolution 8250 x 2200) with auto-iris and auto-exposure for consistent image quality across varying lighting."),
+      H("GPS/IMU", "Integrated GPS with Inertial Measurement Unit providing sub-meter location accuracy, maintaining positioning in challenging terrain and urban environments."),
+      H("DMI", "Custom wheel-mounted Distance Measuring Instrument with ±0.1% accuracy at speeds up to 70 mph, calibrated per client specifications.")
+    ],
+    sw: [
+      H("AutoCrack", "Pathway Services' automated crack detection on all collected 3D images, identifying crack type, severity and extent. Complies with AASHTO R 85-18."),
+      H("PathView", "Certified raters manually verify the automated results using dual-monitor rating workstations."),
+      H("PathWeb", "Web-based data and image viewer, compatible with ESRI, letting client staff virtually review any roadway with 3D pavement images, right-of-way photos and ride quality data.")
+    ]
+  };
+}
+
+let S = load();
+function load() {
+  try { const r = localStorage.getItem(KEY); if (r) return Object.assign(defaults(), JSON.parse(r)); } catch (e) {}
+  return defaults();
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2200); }
+
+/* ---------- dates / chart ---------- */
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const pd = s => new Date(s + "T00:00:00");
+const fmt = s => { const d = pd(s); return `${MON[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`; };
+function isMile(t) { return t.start && t.end && t.start === t.end; }
+
+function ganttHTML() {
+  const ts = S.tasks.filter(t => t.start && t.end && t.end >= t.start);
+  if (!ts.length) return "<p>Add tasks with start and end dates to see the chart.</p>";
+  const min = new Date(Math.min(...ts.map(t => +pd(t.start))));
+  const max = new Date(Math.max(...ts.map(t => +pd(t.end))));
+  const first = new Date(min.getFullYear(), min.getMonth(), 1);
+  const last = new Date(max.getFullYear(), max.getMonth(), 1);
+  const months = [];
+  for (let c = new Date(first); c <= last; c.setMonth(c.getMonth() + 1)) months.push(new Date(c));
+  const quarterly = months.length > 30;
+  let cols = [];
+  if (!quarterly) cols = months.map(m => ({ s: m, e: new Date(m.getFullYear(), m.getMonth() + 1, 1), label: months.length > 18 ? MON[m.getMonth()][0] : MON[m.getMonth()], year: m.getFullYear() }));
+  else months.forEach(m => {
+    if (m.getMonth() % 3 === 0 || !cols.length) cols.push({ s: m, e: new Date(m.getFullYear(), m.getMonth() + 3, 1), label: "Q" + (Math.floor(m.getMonth() / 3) + 1), year: m.getFullYear() });
+  });
+  const cell = "border:1px solid #9aa3b0;padding:2px 4px;font-size:9pt;";
+  let yr = "";
+  for (let i = 0; i < cols.length;) {
+    let j = i; while (j < cols.length && cols[j].year === cols[i].year) j++;
+    yr += `<td colspan="${j - i}" style="${cell}text-align:center;font-weight:bold;background:#e6eef7" bgcolor="#e6eef7">${cols[i].year}</td>`; i = j;
+  }
+  const head = `<tr><td rowspan="2" style="${cell}font-weight:bold;background:#1f4e79;color:#fff" bgcolor="#1f4e79"><font color="#ffffff">Task</font></td><td rowspan="2" style="${cell}font-weight:bold;background:#1f4e79;color:#fff" bgcolor="#1f4e79"><font color="#ffffff">Dates</font></td>${yr}</tr>` +
+    `<tr>${cols.map(c => `<td style="${cell}text-align:center;background:#f2f5f9;font-size:8pt" bgcolor="#f2f5f9">${c.label}</td>`).join("")}</tr>`;
+  const body = ts.map(t => {
+    const s = pd(t.start), e = pd(t.end), m = isMile(t);
+    const cells = cols.map(c => {
+      const hit = s < c.e && e >= c.s;
+      if (!hit) return `<td style="${cell}"> </td>`;
+      if (m) return `<td style="${cell}text-align:center;color:#1f4e79">◆</td>`;
+      return `<td style="${cell}background:#2e75b6" bgcolor="#2e75b6"> </td>`;
+    }).join("");
+    const dates = m ? fmt(t.start) : `${fmt(t.start)} – ${fmt(t.end)}`;
+    return `<tr><td style="${cell}">${esc(t.name)}${t.res ? `<br><span style="color:#667085;font-size:8pt">${esc(t.res)}</span>` : ""}</td><td style="${cell}white-space:nowrap;font-size:8pt">${dates}</td>${cells}</tr>`;
+  }).join("");
+  return `<table style="border-collapse:collapse;border:1px solid #9aa3b0;width:100%" border="1" cellspacing="0" cellpadding="3">${head}${body}</table>`;
+}
+
+/* ---------- experience ---------- */
+function score(p) {
+  const words = (S.kw || "").toLowerCase().split(/[,;\n]+|\s{2,}/).map(w => w.trim()).filter(Boolean);
+  if (!words.length) return 0;
+  const hay = [p.agency, p.pms, p.tags, p.notes, p.year].join(" ").toLowerCase();
+  return words.reduce((n, w) => n + (hay.includes(w) ? 1 : 0), 0);
+}
+function expTableHTML() {
+  const sel = S.exp.filter(p => p.on);
+  if (!sel.length) return "<p>Tick projects in the library to build the table.</p>";
+  const cell = "border:1px solid #9aa3b0;padding:2px 5px;font-size:9pt;";
+  const th = t => `<td style="${cell}font-weight:bold;background:#1f4e79" bgcolor="#1f4e79"><font color="#ffffff">${t}</font></td>`;
+  const ck = v => v ? "✓" : "–";
+  const total = sel.reduce((n, p) => n + (+p.lm || 0), 0);
+  return `<table style="border-collapse:collapse;width:100%" border="1" cellspacing="0" cellpadding="3">
+    <tr>${["Year","Agency","Lane Miles","PMS Database","Data Collection","Engineering Analysis","Asset Management"].map(th).join("")}</tr>
+    ${sel.map(p => `<tr><td style="${cell}">${esc(p.year)}</td><td style="${cell}">${esc(p.agency)}</td><td style="${cell}text-align:right">${(+p.lm || 0).toLocaleString()}</td><td style="${cell}">${esc(p.pms)}</td><td style="${cell}text-align:center">${ck(p.dc)}</td><td style="${cell}text-align:center">${ck(p.eng)}</td><td style="${cell}text-align:center">${ck(p.am)}</td></tr>`).join("")}
+    <tr><td style="${cell}"></td><td style="${cell}font-weight:bold">Total</td><td style="${cell}text-align:right;font-weight:bold">${total.toLocaleString()}</td><td colspan="4" style="${cell}"></td></tr></table>` +
+    sel.filter(p => p.notes).map(p => `<p style="font-size:10pt"><b>${esc(p.agency)}:</b> ${esc(p.notes)}</p>`).join("");
+}
+
+/* ---------- equipment ---------- */
+function eqHTML() {
+  const e = S.equip, v = e.vehicle || "vehicle";
+  const li = a => `<ul>${a.map(x => `<li><b>${esc(x.name)}:</b> ${esc(x.desc)}</li>`).join("")}</ul>`;
+  return `<p>${esc(e.intro).replaceAll("{v}", esc(v))}</p>${li(e.hw)}` +
+    (e.sw.length ? `<p><b>Data processing and delivery.</b></p>${li(e.sw)}` : "");
+}
+
+/* ---------- editors ---------- */
+const taskCols = [["name","Task / milestone","text"],["start","Start","date"],["end","End","date"],["res","Resources","text"]];
+function renderTasks() {
+  $("#taskTable").innerHTML = `<tr><th>#</th>${taskCols.map(c => `<th>${c[1]}</th>`).join("")}<th></th></tr>` +
+    S.tasks.map((t, i) => `<tr data-i="${i}"><td>${i + 1}</td>${taskCols.map(([f, , ty]) => `<td><input type="${ty}" data-f="${f}" value="${esc(t[f])}"></td>`).join("")}
+      <td style="white-space:nowrap"><button class="icon" data-act="up" title="Move up">↑</button> <button class="icon" data-act="down" title="Move down">↓</button> <button class="icon" data-act="dup" title="Duplicate">⧉</button> <button class="icon danger" data-act="del" title="Delete">✕</button></td></tr>`).join("");
+}
+function renderExp() {
+  $("#kw").value = S.kw || "";
+  $("#expTable").innerHTML = `<tr><th>Use</th><th>Match</th><th>Year</th><th>Agency</th><th>Lane mi</th><th>PMS database</th><th title="Data collection">DC</th><th title="Engineering analysis">Eng</th><th title="Asset management">AM</th><th>Tags (for matching)</th><th>Notes (optional paragraph)</th><th></th></tr>` +
+    S.exp.map((p, i) => { const sc = score(p); return `<tr data-i="${i}">
+      <td><input type="checkbox" data-f="on" ${p.on ? "checked" : ""}></td>
+      <td><span class="badge ${sc ? "" : "zero"}" data-score>${sc}</span></td>
+      <td style="width:88px"><input type="text" data-f="year" value="${esc(p.year)}"></td>
+      <td style="min-width:200px"><input type="text" data-f="agency" value="${esc(p.agency)}"></td>
+      <td style="width:80px"><input type="number" data-f="lm" value="${esc(p.lm)}"></td>
+      <td style="width:130px"><input type="text" data-f="pms" value="${esc(p.pms)}"></td>
+      ${["dc","eng","am"].map(f => `<td><input type="checkbox" data-f="${f}" ${p[f] ? "checked" : ""}></td>`).join("")}
+      <td style="width:140px"><input type="text" data-f="tags" value="${esc(p.tags)}"></td>
+      <td style="min-width:200px"><textarea data-f="notes">${esc(p.notes)}</textarea></td>
+      <td style="white-space:nowrap"><button class="icon" data-act="up">↑</button> <button class="icon" data-act="down">↓</button> <button class="icon danger" data-act="del">✕</button></td></tr>`; }).join("");
+  $("#expCount").textContent = `${S.exp.filter(p => p.on).length} of ${S.exp.length} selected`;
+}
+function renderEquip() {
+  const e = S.equip;
+  $("#eqVehicle").value = e.vehicle; $("#eqIntro").value = e.intro;
+  for (const k of ["hw", "sw"]) {
+    $(`#${k}Table`).innerHTML = `<tr><th style="width:25%">Name</th><th>Description</th><th></th></tr>` +
+      e[k].map((x, i) => `<tr data-k="${k}" data-i="${i}"><td><input type="text" data-f="name" value="${esc(x.name)}"></td><td><textarea data-f="desc">${esc(x.desc)}</textarea></td><td style="white-space:nowrap"><button class="icon" data-act="up">↑</button> <button class="icon" data-act="down">↓</button> <button class="icon danger" data-act="del">✕</button></td></tr>`).join("");
+  }
+}
+
+function exportHTML() {
+  const parts = [];
+  const h = t => `<h2 style="font-family:Calibri,Arial;color:#1f4e79">${t}</h2>`;
+  if ($("#xSched").checked) parts.push(h("Proposed Schedule of Work") + ganttHTML());
+  if ($("#xExp").checked) parts.push(h("Experience in Providing Similar Services") + expTableHTML());
+  if ($("#xEq").checked) parts.push(h("Data Collection Equipment") + eqHTML());
+  return parts.join("<p>&nbsp;</p>") || "<p>Nothing selected.</p>";
+}
+function refresh() {
+  $("#ganttPrev").innerHTML = ganttHTML();
+  $("#expPrev").innerHTML = expTableHTML();
+  $("#eqPrev").innerHTML = eqHTML();
+  $("#exportPrev").innerHTML = exportHTML();
+  $("#expCount").textContent = `${S.exp.filter(p => p.on).length} of ${S.exp.length} selected`;
+  $("#pClient").value = S.project.client; $("#pTitle").value = S.project.title;
+  save();
+}
+function renderAll() { renderTasks(); renderExp(); renderEquip(); refresh(); showTab(S.tab); }
+function showTab(t) {
+  S.tab = t;
+  for (const s of ["schedule","experience","equipment","export"]) $("#tab-" + s).hidden = s !== t;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  if (t === "export") $("#exportPrev").innerHTML = exportHTML();
+  save();
+}
+
+/* ---------- events ---------- */
+const move = (a, i, d) => { const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; };
+function rowEdit(tableSel, getArr, rerender) {
+  const tb = $(tableSel);
+  tb.addEventListener("input", e => {
+    const tr = e.target.closest("tr[data-i]"), f = e.target.dataset.f; if (!tr || !f) return;
+    const arr = getArr(tr), it = arr[+tr.dataset.i];
+    it[f] = e.target.type === "checkbox" ? (e.target.checked ? 1 : 0) : e.target.value;
+    if (f === "on") it.on = !!it.on;
+    if (tableSel === "#expTable") { const b = tr.querySelector("[data-score]"); const sc = score(it); b.textContent = sc; b.className = "badge" + (sc ? "" : " zero"); }
+    refresh();
+  });
+  tb.addEventListener("click", e => {
+    const a = e.target.dataset.act; if (!a) return;
+    const tr = e.target.closest("tr[data-i]"), arr = getArr(tr), i = +tr.dataset.i;
+    if (a === "up") move(arr, i, -1); else if (a === "down") move(arr, i, 1);
+    else if (a === "del") arr.splice(i, 1);
+    else if (a === "dup") arr.splice(i + 1, 0, { ...arr[i], id: uid() });
+    rerender(); refresh();
+  });
+}
+rowEdit("#taskTable", () => S.tasks, renderTasks);
+rowEdit("#expTable", () => S.exp, renderExp);
+rowEdit("#hwTable", () => S.equip.hw, renderEquip);
+rowEdit("#swTable", () => S.equip.sw, renderEquip);
+
+$("#tabs").addEventListener("click", e => { if (e.target.dataset.tab) showTab(e.target.dataset.tab); });
+$("#pClient").addEventListener("input", e => { S.project.client = e.target.value; save(); });
+$("#pTitle").addEventListener("input", e => { S.project.title = e.target.value; save(); });
+$("#addTask").onclick = () => { S.tasks.push({ id: uid(), name: "New task", start: "", end: "", res: "" }); renderTasks(); refresh(); };
+$("#addMile").onclick = () => { S.tasks.push({ id: uid(), name: "New milestone", start: "", end: "", res: "" }); renderTasks(); refresh(); };
+$("#loadSched").onclick = () => { if (confirm("Replace the current tasks with the starter schedule?")) { S.tasks = starterTasks(); renderTasks(); refresh(); } };
+$("#repBtn").onclick = () => {
+  const n = Math.max(1, Math.min(10, +$("#repN").value || 1)), base = S.tasks.filter(t => t.start && t.end), out = [];
+  for (let k = 1; k <= n; k++) base.forEach(t => {
+    const sh = s => { const d = pd(s); d.setFullYear(d.getFullYear() + k); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    out.push({ ...t, id: uid(), start: sh(t.start), end: sh(t.end) });
+  });
+  S.tasks.push(...out); renderTasks(); refresh(); toast(`Added ${out.length} rows`);
+};
+$("#addExp").onclick = () => { S.exp.unshift({ id: uid(), on: true, year: "", agency: "", lm: 0, pms: "", dc: 1, eng: 0, am: 0, tags: "", notes: "" }); renderExp(); refresh(); };
+$("#kw").addEventListener("input", e => { S.kw = e.target.value; document.querySelectorAll("#expTable tr[data-i]").forEach(tr => { const p = S.exp[+tr.dataset.i], b = tr.querySelector("[data-score]"), sc = score(p); b.textContent = sc; b.className = "badge" + (sc ? "" : " zero"); }); save(); });
+$("#sortMatch").onclick = () => { S.exp.sort((a, b) => score(b) - score(a) || (+b.lm || 0) - (+a.lm || 0)); renderExp(); refresh(); };
+$("#pickTop").onclick = () => {
+  const n = +$("#topN").value || 1, ranked = [...S.exp].sort((a, b) => score(b) - score(a) || (+b.lm || 0) - (+a.lm || 0));
+  S.exp.forEach(p => p.on = false); ranked.slice(0, n).forEach(p => p.on = true);
+  S.exp.sort((a, b) => (b.on - a.on) || score(b) - score(a)); renderExp(); refresh();
+};
+$("#eqVehicle").addEventListener("input", e => { S.equip.vehicle = e.target.value; refresh(); });
+$("#eqIntro").addEventListener("input", e => { S.equip.intro = e.target.value; refresh(); });
+$("#addHw").onclick = () => { S.equip.hw.push({ id: uid(), name: "", desc: "" }); renderEquip(); refresh(); };
+$("#addSw").onclick = () => { S.equip.sw.push({ id: uid(), name: "", desc: "" }); renderEquip(); refresh(); };
+["xSched","xExp","xEq"].forEach(id => $("#" + id).addEventListener("change", () => $("#exportPrev").innerHTML = exportHTML()));
+
+$("#copyWord").onclick = () => {
+  const el = $("#exportPrev"), r = document.createRange(); r.selectNodeContents(el);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  s.removeAllRanges();
+  toast(ok ? "Copied. Paste into Word (Ctrl+V)." : "Copy blocked. Select the preview and press Ctrl+C.");
+};
+function download(name, text, type) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+const slug = () => (S.project.client || "proposal").replace(/[^\w]+/g, "_");
+$("#dlDoc").onclick = () => {
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${esc(S.project.title || "Proposal sections")}</title></head><body style="font-family:Calibri,Arial;font-size:11pt">${exportHTML()}</body></html>`;
+  download(`${slug()}_sections.doc`, "﻿" + html, "application/msword");
+};
+$("#btnSave").onclick = () => download(`${slug()}_proposal_data.json`, JSON.stringify(S, null, 2), "application/json");
+$("#btnLoad").onclick = () => $("#fileIn").click();
+$("#fileIn").onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try { S = Object.assign(defaults(), JSON.parse(r.result)); renderAll(); toast("File opened"); } catch (err) { alert("That file could not be read."); } };
+  r.readAsText(f); e.target.value = "";
+};
+$("#btnReset").onclick = () => { if (confirm("Reset everything to the built-in starting data? Your edits will be lost unless you saved a file.")) { S = defaults(); renderAll(); } };
+
+renderAll();
+</script>
+</body>
+</html>
