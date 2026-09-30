@@ -60,12 +60,46 @@
   <input type="file" id="fileIn" accept=".json" hidden>
 </header>
 <nav id="tabs">
-  <button data-tab="schedule">1 · Schedule of Work</button>
-  <button data-tab="experience">2 · Experience</button>
-  <button data-tab="equipment">3 · Equipment</button>
-  <button data-tab="export">4 · Export to Word</button>
+  <button data-tab="rfp">1 · RFP Intake</button>
+  <button data-tab="schedule">2 · Schedule of Work</button>
+  <button data-tab="experience">3 · Experience</button>
+  <button data-tab="equipment">4 · Equipment</button>
+  <button data-tab="export">5 · Export to Word</button>
 </nav>
 <main>
+  <section id="tab-rfp" hidden>
+    <div class="card">
+      <h2>Load the RFP or RFI</h2>
+      <p class="hint">Upload the PDF, or paste the text. It is read inside your browser and is never uploaded anywhere. Scanned PDFs (pictures of pages) have no text to read; paste the text instead.</p>
+      <div class="row-tools"><input type="file" id="rfpFile" accept=".pdf,.txt"><span id="rfpStatus" style="color:var(--muted)"></span></div>
+      <textarea id="rfpText" placeholder="...or paste the RFP text here" style="min-height:110px"></textarea>
+      <div class="row-tools" style="margin-top:8px"><button class="primary" id="analyze">Analyze RFP</button><button id="rfpClear">Clear</button><span style="color:var(--muted)">Analysis is rule-based. Always check the results against the RFP.</span></div>
+    </div>
+    <div id="rfpResults" hidden>
+      <div class="card"><h2>Summary</h2><div id="rfpSummary"></div>
+        <div id="flagList" class="row-tools" style="margin-top:10px"></div></div>
+      <div class="card"><h2>Required proposal sections</h2>
+        <p class="hint">These become your outline and compliance checklist. Fix titles, set a page budget, and track status.</p>
+        <div class="scroll"><table class="ed" id="secTable"></table></div>
+        <div class="row-tools"><button id="addSec">+ Add section</button></div></div>
+      <div class="card"><h2>Key dates</h2>
+        <div class="scroll"><table class="ed" id="dateTable"></table></div>
+        <div class="row-tools"><button id="addDate">+ Add date</button><button class="primary" id="datesToSched">Add ticked dates to Schedule as milestones</button></div></div>
+      <div class="card"><h2>Evaluation criteria</h2>
+        <div class="scroll"><table class="ed" id="critTable"></table></div>
+        <div class="row-tools"><button id="addCrit">+ Add criterion</button></div></div>
+      <div class="card"><h2>Scope of work tasks</h2>
+        <div class="scroll"><table class="ed" id="rtaskTable"></table></div>
+        <div class="row-tools"><button id="addRTask">+ Add task</button><button class="primary" id="tasksToSched">Add ticked tasks to Schedule</button></div></div>
+      <div class="card"><h2>Other mandatory statements</h2>
+        <p class="hint">Sentences with "shall" or "must" about what to submit. Tick the ones to track in the checklist.</p>
+        <div class="scroll"><table class="ed" id="mustTable"></table></div></div>
+      <div class="card"><h2>Keywords for matching experience</h2>
+        <div id="kwOut" style="margin-bottom:8px"></div>
+        <button class="primary" id="kwToExp">Use these keywords in Experience</button></div>
+    </div>
+  </section>
+
   <section id="tab-schedule" hidden>
     <div class="card">
       <h2>Tasks and milestones</h2>
@@ -135,6 +169,7 @@
       <h2>Export</h2>
       <div class="note">This creates Word-openable content. For your final proposal, the cleanest path is <b>Copy for Word</b> and paste into your proposal template so it takes on your fonts and styles. <b>Download .doc</b> gives a standalone file that Word opens.</div>
       <div class="checks row-tools">
+        <label><input type="checkbox" id="xRfp" checked> RFP checklist &amp; key dates</label>
         <label><input type="checkbox" id="xSched" checked> Schedule of work</label>
         <label><input type="checkbox" id="xExp" checked> Experience table</label>
         <label><input type="checkbox" id="xEq" checked> Equipment</label>
@@ -149,6 +184,7 @@
 </main>
 <div class="toast" id="toast"></div>
 
+<script src="lib/pdf.min.js"></script>
 <script>
 const KEY = "proposalBuilder.v1";
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -157,8 +193,9 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&l
 
 function defaults() {
   return {
-    tab: "schedule",
+    tab: "rfp",
     project: { client: "", title: "" },
+    rfp: { name: "", text: "", pageLimit: "", dates: [], sections: [], musts: [], criteria: [], tasks: [], flags: [], keywords: [], done: false },
     tasks: starterTasks(),
     exp: starterExp(),
     equip: starterEquip(),
@@ -291,6 +328,182 @@ function eqHTML() {
     (e.sw.length ? `<p><b>Data processing and delivery.</b></p>${li(e.sw)}` : "");
 }
 
+
+/* ---------- RFP analysis (rule-based, runs in the browser) ---------- */
+const MONRE = "Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?";
+const DATE_RE = new RegExp("\\b(" + MONRE + ")\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(20\\d{2}|20\\d\\s\\d)\\b", "gi");
+const DATE_KEYS = /(due|deadline|question|clarif|award|proposal|submit|submission|submittal|pre-?(bid|proposal)|conference|meeting|notice to proceed|NTP|council|board|interview|complet|issued|release|advertis|addend|start|term|expire|final)/i;
+const monIdx = m => MON.findIndex(x => x.toLowerCase() === m.slice(0, 3).toLowerCase());
+const cap = (t, n) => t.length > n ? t.slice(0, n - 1).trim() + "…" : t;
+
+function analyzeRFP(raw) {
+  const lines = raw.replace(/\r/g, "").split("\n").map(l => l.replace(/\s+/g, " ").trim());
+  const R = { dates: [], sections: [], musts: [], criteria: [], tasks: [], flags: [], keywords: [], pageLimit: "" };
+  const all = lines.join("\n");
+
+  // page limit
+  const pl = all.match(/(?:limited to|limit(?:ed)? of|maximum of|no more than)\s+(?:\w+\s+)?\(?(\d{1,3})\)?\s*(?:double-sided\s+)?pages?\s+in total/i) || all.match(/(?:proposal|response|submittal)[^.]{0,40}(?:limited to|limit of|maximum of)\s+(?:\w+\s+)?\(?(\d{1,3})\)?\s*pages?/i) || all.match(/\((\d{1,3})\)\s*page\s+maximum/i) || all.match(/(\d{1,3})[- ]page (?:limit|maximum)/i);
+  if (pl) R.pageLimit = pl[1];
+
+  // dates
+  const seen = new Set();
+  lines.forEach((l, i) => {
+    DATE_RE.lastIndex = 0; let m;
+    while ((m = DATE_RE.exec(l))) {
+      const y = +m[3].replace(/\s/g, ""), mo = monIdx(m[1]), d = +m[2];
+      if (mo < 0 || d < 1 || d > 31) continue;
+      const iso = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      let label = l.replace(m[0], "").replace(/[\s–—:.\-]+$/, "").replace(/^[\s–—:.\-]+/, "");
+      if (label.length < 8 && i > 0) label = (lines[i - 1] + " " + label).trim();
+      label = cap(label || "Date in RFP", 90);
+      const k = iso + label.slice(0, 30);
+      if (seen.has(k) || /\.{4,}/.test(l)) continue; seen.add(k);
+      R.dates.push({ id: uid(), on: DATE_KEYS.test(label), label, iso });
+    }
+  });
+  const maxY = Math.max(0, ...R.dates.map(x => +x.iso.slice(0, 4)));
+  R.dates = R.dates.filter(x => +x.iso.slice(0, 4) >= maxY - 1);
+  R.dates.sort((a, b) => a.iso.localeCompare(b.iso)); R.dates = R.dates.slice(0, 40);
+
+  // required sections: look under every "proposal requirements"-style heading and keep the best list
+  const head = /(proposal (requirements|content|contents|format|submittal|submission)|submittal requirements|contents? of (the )?(proposal|submittal|response)|required (content|submittals?)|response requirements|proposal outline|proposal should contain|proposal shall (contain|include))/i;
+  const endRe = /^(?:section\s+\d+\s*[-–:]\s*|[IVX]+\.\s*|\d+(?:\.\d+)?\.?\s*)?(evaluation|selection|award|scoring)/i;
+  let best = [];
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.length > 100 || !head.test(l) || /\.{4,}/.test(l)) continue;
+    let end = Math.min(lines.length, i + 260);
+    for (let j = i + 2; j < end; j++) if (lines[j].length < 70 && endRe.test(lines[j])) { end = j; break; }
+    // A) numbered list 1. / 1)  (keep the longest 1..n run in the region)
+    const runs = []; let run = null, cur = null;
+    for (let j = i + 1; j < end; j++) {
+      const t = lines[j];
+      if (!t) { cur = null; continue; }
+      if (/^(--- p|-\s*\d+\s*-)/.test(t)) continue;
+      const m = t.match(/^(\d{1,2})[.)]\s+(\S.*)$/);
+      if (m && +m[1] === 1) { run = []; runs.push(run); }
+      if (m && run && +m[1] === run.length + 1) { cur = { first: m[2], text: m[2] }; run.push(cur); }
+      else if (cur) cur.text += " " + t;
+    }
+    run = runs.sort((x, y) => y.length - x.length)[0] || [];
+    let found = run.map(it => ({ title: it.first.split(/\s[–—-]\s|:\s|\.\s/)[0], detail: it.text, at: null }));
+    // B) unnumbered headings: "TAB SECTION #1 - ...", "A. Title:", or standalone well-known headings
+    if (found.length < 3) {
+      found = [];
+      const known = /^(cover( letter| page)?|transmittal letter|introductory letter|executive summary|project understanding|technical approach|work plan|scope of (work|services)|project schedule|schedule|references?|fee (proposal|schedule)|cost proposal|price proposal|team|key personnel|resumes|appendix|appendices|qualifications)\s*$/i;
+      for (let j = i + 1; j < end; j++) {
+        const t = lines[j]; let m;
+        if ((m = t.match(/^(TAB SECTION\s*#?\s*\d+\s*[-–:]\s*.{3,70}?):?$/i)) || (t.length <= 72 && !/[.,;]$/.test(t) && (m = t.match(/^[A-Z]\.\s+([A-Z].{3,66}?):?$/))) || (known.test(t) && (m = [t, t.replace(/\s+$/, "")])))
+          found.push({ title: m[1].replace(/\s+/g, " "), detail: "", at: j });
+      }
+    }
+    if (found.length > best.length) best = found.map(f => ({ ...f, from: i, end }));
+  }
+  R.sections = best.map((f, k) => {
+    // per-section page allowance, read from the text that follows the heading
+    let pages = "";
+    const stop = k + 1 < best.length && best[k + 1].at != null && f.at != null ? best[k + 1].at : (f.at != null ? Math.min(f.end, f.at + 25) : -1);
+    const seg = f.at != null ? lines.slice(f.at, stop).join(" ") : f.detail;
+    const pm = seg.match(/(?:not exceed|maximum of|limited to|no more than|up to)\s+(?:\w+\s+)?\(?(\d{1,2})\)?\s*(?:\w+\s+)?pages?/i) || seg.match(/(\d{1,2})\s*pages?\s*(?:maximum|max)/i);
+    if (pm) pages = pm[1];
+    return { id: uid(), on: true, title: cap(f.title, 80), detail: cap(f.detail || seg, 400), pages, status: "todo", loc: "" };
+  });
+
+  // evaluation criteria
+  const cs = new Set();
+  const addCrit = (name, pts) => {
+    name = name.replace(/^[A-Z0-9]{1,2}[.)]\s+/, "").split(/\s[–—]\s|:\s/)[0].trim();
+    if (name.length < 4 || /^(apply|if|and|the)$/i.test(name) || cs.has(name.toLowerCase()) || /^(sub)?total|^name of|^ranking/i.test(name)) return; cs.add(name.toLowerCase());
+    R.criteria.push({ id: uid(), name: cap(name, 80), pts });
+  };
+  lines.forEach(l => {
+    if (/\.{4,}/.test(l)) return;
+    let m = l.match(/^(.{4,90}?)[\s:–—.-]+\(?\s*(\d{1,3})\s*(?:points|pts|percent|%)\)?\s*$/i);
+    if (m) return addCrit(m[1], m[2]);
+    m = l.match(/^(.{4,90}?)\s{1,}(Pass\s*\/\s*Fail|Go\s*\/\s*No[- ]Go)\s*$/i);
+    if (m) addCrit(m[1], m[2]);
+  });
+  if (R.criteria.length < 3) {   // table layout: name and description lines, then the points on their own
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].length > 80 || !/evaluation criteria|scoring criteria/i.test(lines[i]) || /\.{4,}/.test(lines[i])) continue;
+      const found = []; let blk = [];
+      for (let j = i + 1; j < Math.min(lines.length, i + 70); j++) {
+        const t = lines[j]; if (!t || /^(--- p|points|possible|maximum|reviewer|score|evaluation criteria|the (county|city) will|rfp no|written proposal)/i.test(t)) continue;
+        if (/^total/i.test(t)) break;
+        let m = t.match(/^(\d{1,3})$/) || t.match(/^(.*\S)\s{1,}(\d{1,3})$/);
+        const goNo = /go\s*\/\s*no[- ]?go|pass\s*\/\s*fail/i.test(t);
+        if (m && blk.length + (m[2] ? 1 : 0) > 0 && +(m[2] || m[1]) <= 100) { if (m[2]) blk.push(m[1]); found.push([blk[0], m[2] || m[1]]); blk = []; }
+        else if (goNo) { const nm = t.replace(/\s*(go\s*\/\s*no[- ]?go|pass\s*\/\s*fail)\s*$/i, ""); found.push([nm.length > 3 ? nm : blk[0], t.match(/go\s*\/\s*no[- ]?go|pass\s*\/\s*fail/i)[0]]); blk = []; }
+        else blk.push(t);
+      }
+      if (found.length >= 3) { found.forEach(f => addCrit(f[0], f[1])); break; }
+    }
+  }
+
+  // scope tasks
+  const ts = new Set();
+  lines.forEach(l => {
+    const m = l.match(/^(?:Task|Phase)\s+(\d+[A-Za-z]?)\s*[–—:.\-]+\s*(\S.{2,110})$/i);
+    if (!m || /\.{4,}/.test(l) || ts.has(m[1])) return; ts.add(m[1]);
+    R.tasks.push({ id: uid(), on: true, num: m[1], title: cap(m[2], 100) });
+  });
+
+  // mandatory statements
+  const ms = new Set(), used = R.sections.map(x => x.detail.slice(0, 30));
+  let cutoff = lines.length;
+  for (let i = Math.floor(lines.length * 0.15); i < lines.length; i++) if (lines[i].length < 80 && /^(appendix|attachment|exhibit)\s+[A-Z0-9]/i.test(lines[i]) && !/\.{4,}/.test(lines[i])) { cutoff = i; break; }
+  lines.forEach((l, i) => {
+    if (i > cutoff) return;
+    if (!/\b(shall|must|is required|are required|will be required|mandatory)\b/i.test(l)) return;
+    if (!/(submit|include|provide|attach|sign|form|certif|insur|proof|statement|acknowledg|copies|resume|reference|email|separate)/i.test(l)) return;
+    let t = l; if (!/[.;:]$/.test(t) && lines[i + 1]) t += " " + lines[i + 1];
+    t = cap(t, 260); const k = t.slice(0, 40).toLowerCase();
+    if (ms.has(k) || used.some(u => t.includes(u))) return; ms.add(k);
+    R.musts.push({ id: uid(), on: false, text: t, status: "todo", loc: "" });
+  });
+  R.musts = R.musts.slice(0, 40);
+
+  // flags
+  const F = (label, re) => { if (re.test(all)) R.flags.push(label); };
+  F("Pass/Fail criteria", /pass\s*\/\s*fail/i);
+  F("Debarment / SAM.gov check", /debar|sam\.gov/i);
+  F("Insurance certificate", /certificate of insurance|proof of (liability )?insurance/i);
+  F("Separate fee/price file", /separate (pdf|file|envelope|sealed)|fee.{0,40}separate/i);
+  F("DBE / SBE / local preference", /\bDBE\b|\bSBE\b|disadvantaged business|local (business )?preference/i);
+  F("Addenda acknowledgement", /acknowledg\w+ (of )?(receipt of )?(all )?addend/i);
+  F("Signed cover letter", /cover letter.{0,200}(signed|authorized)/is);
+  F("Public records notice", /public records/i);
+  F("Notarized / affidavit", /notar|affidavit/i);
+  F("Hyperlinks allowed for samples", /hyperlink/i);
+  F("Qualifications-based selection (fee last)", /qualifications?[- ]based selection|\bQBS\b/i);
+
+  // keywords for experience matching
+  const vocab = ["Cartegraph","StreetSaver","PAVER","Lucity","CRAB","GIS","IRI","PCI","HPMS","ASTM","AASHTO","LCMS","asset management","sidewalk","ADA","curb ramp","airfield","bikeway","trail","county","city","state","transit","drone","Esri","ArcGIS","ROW imagery","rutting","3D","ramps","signs","striping","culvert","Washington","California","Texas","Oregon","Arizona","Nevada","Colorado","Florida","Georgia","New York","Utah","Idaho"];
+  R.keywords = vocab.map(v => [v, (all.match(new RegExp("\\b" + v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "gi")) || []).length]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 14).map(x => x[0]);
+  return R;
+}
+
+async function readPDF(file) {
+  if (!window.pdfjsLib) throw new Error("The PDF reader (lib folder) was not found next to index.html. Paste the text instead, or download the whole proposal-tool folder.");
+  const inl = document.getElementById("pdfWorkerSrc");   // present in the single-file build
+  pdfjsLib.GlobalWorkerOptions.workerSrc = inl ? URL.createObjectURL(new Blob([inl.textContent], { type: "text/javascript" })) : "lib/pdf.worker.min.js";
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const out = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    $("#rfpStatus").textContent = `Reading page ${n} of ${pdf.numPages}…`;
+    const tc = await (await pdf.getPage(n)).getTextContent();
+    let line = "", lastY = null, lastEnd = 0;
+    for (const it of tc.items) {
+      const y = it.transform[5], x = it.transform[4];
+      if (lastY !== null && Math.abs(y - lastY) > 3) { out.push(line); line = ""; lastEnd = 0; }
+      if (line && x - lastEnd > 1.5 && !line.endsWith(" ") && !it.str.startsWith(" ")) line += " ";
+      line += it.str; lastY = y; lastEnd = x + (it.width || 0);
+    }
+    out.push(line, "");
+  }
+  return out.join("\n");
+}
+
 /* ---------- editors ---------- */
 const taskCols = [["name","Task / milestone","text"],["start","Start","date"],["end","End","date"],["res","Resources","text"]];
 function renderTasks() {
@@ -326,6 +539,7 @@ function renderEquip() {
 function exportHTML() {
   const parts = [];
   const h = t => `<h2 style="font-family:Calibri,Arial;color:#1f4e79">${t}</h2>`;
+  if ($("#xRfp").checked) parts.push(h("RFP Requirements Checklist") + rfpHTML());
   if ($("#xSched").checked) parts.push(h("Proposed Schedule of Work") + ganttHTML());
   if ($("#xExp").checked) parts.push(h("Experience in Providing Similar Services") + expTableHTML());
   if ($("#xEq").checked) parts.push(h("Data Collection Equipment") + eqHTML());
@@ -336,14 +550,15 @@ function refresh() {
   $("#expPrev").innerHTML = expTableHTML();
   $("#eqPrev").innerHTML = eqHTML();
   $("#exportPrev").innerHTML = exportHTML();
+  if (S.rfp.done) renderSummary();
   $("#expCount").textContent = `${S.exp.filter(p => p.on).length} of ${S.exp.length} selected`;
   $("#pClient").value = S.project.client; $("#pTitle").value = S.project.title;
   save();
 }
-function renderAll() { renderTasks(); renderExp(); renderEquip(); refresh(); showTab(S.tab); }
+function renderAll() { renderRFP(); renderTasks(); renderExp(); renderEquip(); refresh(); showTab(S.tab); }
 function showTab(t) {
   S.tab = t;
-  for (const s of ["schedule","experience","equipment","export"]) $("#tab-" + s).hidden = s !== t;
+  for (const s of ["rfp","schedule","experience","equipment","export"]) $("#tab-" + s).hidden = s !== t;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   if (t === "export") $("#exportPrev").innerHTML = exportHTML();
   save();
@@ -375,6 +590,103 @@ rowEdit("#expTable", () => S.exp, renderExp);
 rowEdit("#hwTable", () => S.equip.hw, renderEquip);
 rowEdit("#swTable", () => S.equip.sw, renderEquip);
 
+/* ---------- RFP tab UI ---------- */
+const STATUS = [["todo","Not started"],["draft","Drafted"],["done","Done"]];
+const statusSel = v => `<select data-f="status">${STATUS.map(([k, t]) => `<option value="${k}" ${v === k ? "selected" : ""}>${t}</option>`).join("")}</select>`;
+const del = `<td><button class="icon danger" data-act="del">✕</button></td>`;
+const ck = (on) => `<td><input type="checkbox" data-f="on" ${on ? "checked" : ""}></td>`;
+function renderRFP() {
+  const r = S.rfp;
+  $("#rfpText").value = r.text || "";
+  $("#rfpResults").hidden = !r.done;
+  if (!r.done) return;
+  $("#secTable").innerHTML = `<tr><th>Track</th><th>Section</th><th style="width:70px">Pages</th><th>Status</th><th>Where in our proposal / notes</th><th></th></tr>` +
+    r.sections.map((x, i) => `<tr data-i="${i}">${ck(x.on)}<td style="min-width:220px"><input type="text" data-f="title" value="${esc(x.title)}" title="${esc(x.detail || "")}"></td><td><input type="number" data-f="pages" value="${esc(x.pages)}"></td><td>${statusSel(x.status)}</td><td><input type="text" data-f="loc" value="${esc(x.loc)}"></td>${del}</tr>`).join("");
+  $("#dateTable").innerHTML = `<tr><th>Use</th><th>What</th><th style="width:150px">Date</th><th></th></tr>` +
+    r.dates.map((x, i) => `<tr data-i="${i}">${ck(x.on)}<td style="min-width:260px"><input type="text" data-f="label" value="${esc(x.label)}"></td><td><input type="date" data-f="iso" value="${esc(x.iso)}"></td>${del}</tr>`).join("");
+  $("#critTable").innerHTML = `<tr><th>Criterion</th><th style="width:110px">Points</th><th></th></tr>` +
+    r.criteria.map((x, i) => `<tr data-i="${i}"><td style="min-width:260px"><input type="text" data-f="name" value="${esc(x.name)}"></td><td><input type="text" data-f="pts" value="${esc(x.pts)}"></td>${del}</tr>`).join("");
+  $("#rtaskTable").innerHTML = `<tr><th>Use</th><th style="width:70px">Task</th><th>Title</th><th></th></tr>` +
+    r.tasks.map((x, i) => `<tr data-i="${i}">${ck(x.on)}<td><input type="text" data-f="num" value="${esc(x.num)}"></td><td style="min-width:260px"><input type="text" data-f="title" value="${esc(x.title)}"></td>${del}</tr>`).join("");
+  $("#mustTable").innerHTML = `<tr><th>Track</th><th>Statement</th><th>Status</th><th>Where / notes</th><th></th></tr>` +
+    r.musts.map((x, i) => `<tr data-i="${i}">${ck(x.on)}<td style="min-width:300px"><textarea data-f="text">${esc(x.text)}</textarea></td><td>${statusSel(x.status)}</td><td><input type="text" data-f="loc" value="${esc(x.loc)}"></td>${del}</tr>`).join("");
+  $("#flagList").innerHTML = r.flags.map(f => `<span class="badge" style="padding:3px 10px">${esc(f)}</span>`).join("") || "<span style='color:var(--muted)'>No special requirements detected.</span>";
+  $("#kwOut").innerHTML = r.keywords.length ? r.keywords.map(k => `<span class="badge" style="padding:3px 10px;margin-right:4px">${esc(k)}</span>`).join("") : "<span style='color:var(--muted)'>None found.</span>";
+  renderSummary();
+}
+function renderSummary() {
+  const r = S.rfp, used = r.sections.filter(x => x.on).reduce((n, x) => n + (+x.pages || 0), 0), lim = +r.pageLimit || 0;
+  const pts = r.criteria.reduce((n, x) => n + (+x.pts || 0), 0);
+  const tracked = r.sections.filter(x => x.on).length + r.musts.filter(x => x.on).length;
+  const done = r.sections.filter(x => x.on && x.status === "done").length + r.musts.filter(x => x.on && x.status === "done").length;
+  const over = lim && used > lim;
+  $("#rfpSummary").innerHTML = `<div class="row-tools" style="gap:18px">
+    <label>Page limit <input type="number" id="pageLimit" value="${esc(r.pageLimit)}" style="width:70px;padding:5px"></label>
+    <span>Page budget used: <b style="color:${over ? "#b42318" : "inherit"}">${used}${lim ? " / " + lim : ""}</b>${over ? " (over the limit)" : ""}</span>
+    <span>Scoring total: <b>${pts || "–"}</b></span>
+    <span>Checklist: <b>${done} / ${tracked}</b> done</span></div>`;
+}
+rowEdit("#secTable", () => S.rfp.sections, renderRFP);
+rowEdit("#dateTable", () => S.rfp.dates, renderRFP);
+rowEdit("#critTable", () => S.rfp.criteria, renderRFP);
+rowEdit("#rtaskTable", () => S.rfp.tasks, renderRFP);
+rowEdit("#mustTable", () => S.rfp.musts, renderRFP);
+$("#rfpSummary").addEventListener("input", e => { if (e.target.id === "pageLimit") { S.rfp.pageLimit = e.target.value; renderSummary(); $("#pageLimit").focus(); refresh(); } });
+$("#rfpText").addEventListener("input", e => { S.rfp.text = e.target.value; save(); });
+$("#rfpFile").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    $("#rfpStatus").textContent = "Reading…";
+    const text = /\.pdf$/i.test(f.name) ? await readPDF(f) : await f.text();
+    if (text.replace(/\s/g, "").length < 200) throw new Error("No readable text found. This may be a scanned PDF. Paste the text instead.");
+    S.rfp.name = f.name; S.rfp.text = text.length < 1500000 ? text : text.slice(0, 1500000);
+    $("#rfpText").value = S.rfp.text; $("#rfpStatus").textContent = `${f.name} loaded (${text.split(/\s+/).length.toLocaleString()} words)`;
+    doAnalyze();
+  } catch (err) { $("#rfpStatus").textContent = ""; alert(err.message || err); }
+  e.target.value = "";
+};
+function doAnalyze() {
+  const t = $("#rfpText").value.trim(); if (!t) { toast("Load or paste an RFP first"); return; }
+  const keep = S.rfp.name, R = analyzeRFP(t);
+  S.rfp = Object.assign({ name: keep, text: t, done: true }, R);
+  renderRFP(); refresh();
+  toast(`Found ${R.sections.length} sections, ${R.dates.length} dates, ${R.criteria.length} criteria`);
+  if (!R.client_title) { /* placeholder for future client-name detection */ }
+}
+$("#analyze").onclick = doAnalyze;
+$("#rfpClear").onclick = () => { if (confirm("Clear the RFP and its results?")) { S.rfp = defaults().rfp; $("#rfpStatus").textContent = ""; renderRFP(); refresh(); } };
+$("#addSec").onclick = () => { S.rfp.sections.push({ id: uid(), on: true, title: "New section", detail: "", pages: "", status: "todo", loc: "" }); renderRFP(); refresh(); };
+$("#addDate").onclick = () => { S.rfp.dates.push({ id: uid(), on: true, label: "", iso: "" }); renderRFP(); refresh(); };
+$("#addCrit").onclick = () => { S.rfp.criteria.push({ id: uid(), name: "", pts: "" }); renderRFP(); refresh(); };
+$("#addRTask").onclick = () => { S.rfp.tasks.push({ id: uid(), on: true, num: String(S.rfp.tasks.length + 1), title: "" }); renderRFP(); refresh(); };
+$("#datesToSched").onclick = () => {
+  const d = S.rfp.dates.filter(x => x.on && x.iso); d.forEach(x => S.tasks.push({ id: uid(), name: x.label, start: x.iso, end: x.iso, res: "" }));
+  renderTasks(); refresh(); toast(`Added ${d.length} milestones to Schedule`);
+};
+$("#tasksToSched").onclick = () => {
+  const d = S.rfp.tasks.filter(x => x.on); d.forEach(x => S.tasks.push({ id: uid(), name: `Task ${x.num} – ${x.title}`, start: "", end: "", res: "" }));
+  renderTasks(); refresh(); toast(`Added ${d.length} tasks. Set their dates on the Schedule tab.`);
+};
+$("#kwToExp").onclick = () => { S.kw = S.rfp.keywords.join(", "); renderExp(); refresh(); showTab("experience"); toast("Keywords applied. Use Sort by match."); };
+
+function rfpHTML() {
+  const r = S.rfp; if (!r.done) return "<p>No RFP analyzed yet.</p>";
+  const cell = "border:1px solid #9aa3b0;padding:2px 5px;font-size:9pt;";
+  const th = t => `<td style="${cell}font-weight:bold;background:#1f4e79" bgcolor="#1f4e79"><font color="#ffffff">${t}</font></td>`;
+  const st = v => (STATUS.find(x => x[0] === v) || [, ""])[1];
+  const secs = r.sections.filter(x => x.on), musts = r.musts.filter(x => x.on), dates = r.dates.filter(x => x.on && x.iso);
+  const pages = secs.reduce((n, x) => n + (+x.pages || 0), 0);
+  let h = `<p><b>${esc(S.project.client || r.name || "RFP")}</b>${S.project.title ? " – " + esc(S.project.title) : ""}${r.pageLimit ? `. Page limit: ${esc(r.pageLimit)}.` : ""}</p>`;
+  if (secs.length) h += `<h3>Proposal outline and compliance checklist</h3><table style="border-collapse:collapse;width:100%" border="1" cellspacing="0" cellpadding="3"><tr>${["#","Required section","Pages","Status","Location / notes"].map(th).join("")}</tr>` +
+    secs.map((x, i) => `<tr><td style="${cell}">${i + 1}</td><td style="${cell}">${esc(x.title)}</td><td style="${cell}text-align:center">${esc(x.pages)}</td><td style="${cell}">${st(x.status)}</td><td style="${cell}">${esc(x.loc)}</td></tr>`).join("") +
+    `<tr><td style="${cell}"></td><td style="${cell}font-weight:bold">Total pages</td><td style="${cell}text-align:center;font-weight:bold">${pages}</td><td colspan="2" style="${cell}"></td></tr></table>`;
+  if (musts.length) h += `<h3>Other requirements</h3><table style="border-collapse:collapse;width:100%" border="1" cellspacing="0" cellpadding="3"><tr>${["Requirement","Status","Location / notes"].map(th).join("")}</tr>` +
+    musts.map(x => `<tr><td style="${cell}">${esc(x.text)}</td><td style="${cell}">${st(x.status)}</td><td style="${cell}">${esc(x.loc)}</td></tr>`).join("") + `</table>`;
+  if (dates.length) h += `<h3>Key dates</h3><table style="border-collapse:collapse;width:100%" border="1" cellspacing="0" cellpadding="3"><tr>${["Date","Event"].map(th).join("")}</tr>` +
+    dates.map(x => `<tr><td style="${cell}white-space:nowrap">${fmt(x.iso)}</td><td style="${cell}">${esc(x.label)}</td></tr>`).join("") + `</table>`;
+  return h;
+}
+
 $("#tabs").addEventListener("click", e => { if (e.target.dataset.tab) showTab(e.target.dataset.tab); });
 $("#pClient").addEventListener("input", e => { S.project.client = e.target.value; save(); });
 $("#pTitle").addEventListener("input", e => { S.project.title = e.target.value; save(); });
@@ -401,7 +713,7 @@ $("#eqVehicle").addEventListener("input", e => { S.equip.vehicle = e.target.valu
 $("#eqIntro").addEventListener("input", e => { S.equip.intro = e.target.value; refresh(); });
 $("#addHw").onclick = () => { S.equip.hw.push({ id: uid(), name: "", desc: "" }); renderEquip(); refresh(); };
 $("#addSw").onclick = () => { S.equip.sw.push({ id: uid(), name: "", desc: "" }); renderEquip(); refresh(); };
-["xSched","xExp","xEq"].forEach(id => $("#" + id).addEventListener("change", () => $("#exportPrev").innerHTML = exportHTML()));
+["xRfp","xSched","xExp","xEq"].forEach(id => $("#" + id).addEventListener("change", () => $("#exportPrev").innerHTML = exportHTML()));
 
 $("#copyWord").onclick = () => {
   const el = $("#exportPrev"), r = document.createRange(); r.selectNodeContents(el);

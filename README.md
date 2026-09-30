@@ -1,15 +1,18 @@
 # Field-Checklist
 
-## Proposal Builder (`proposal-tool/index.html`)
+## Proposal Builder
 
-A browser-only tool for the technical-proposal sections that change with every RFP. Download `proposal-tool/index.html` and double-click it to open it in Edge. It needs no install and no admin rights, and nothing is uploaded anywhere.
+A browser-only tool for the parts of a technical proposal that change with every RFP. **For everyday use, download the single file `proposal-tool/dist/proposal-builder.html` and double-click it** (works in Edge, no install, no admin rights, nothing is uploaded anywhere).
 
-1. **Schedule of Work.** Edit tasks, dates and milestones, and the chart updates. Repeat an annual cycle across a multi-year contract.
-2. **Experience.** Keep a library of projects, type the RFP's keywords to score them, and tick the best fits for the proposal table.
-3. **Equipment.** Editable PathRunner description and subsystem list, so old equipment wording is gone.
-4. **Export.** Copy into Word, or download a `.doc`. **Save file** keeps all your edits as a `.json` you can reopen later.
+1. **RFP Intake.** Upload the RFP/RFI PDF (or paste text). It finds the required proposal sections, page limits, key dates, evaluation criteria, scope tasks and special requirements (insurance, debarment, separate fee file, and so on), and turns them into an outline and compliance checklist with page budget and status.
+2. **Schedule of Work.** Edit tasks and milestones, and the chart updates. Send the RFP's key dates and scope tasks straight into it. Repeat an annual cycle across a multi-year contract.
+3. **Experience.** Keep a library of projects, score them against the RFP's keywords, and tick the best fits for the proposal table.
+4. **Equipment.** Editable PathRunner description and subsystem list.
+5. **Export.** Copy into Word, or download a `.doc`. **Save file** keeps all your edits as a `.json` you can reopen later.
 
-Starting data comes from the Thurston County draft. Edit it freely.
+RFP analysis is rule-based and works best on text PDFs. Always check the results against the RFP. Starting project and equipment data comes from the Thurston County draft.
+
+Developers: edit `proposal-tool/index.html` (it loads `lib/pdf.min.js`), then run `python3 proposal-tool/build_single.py` to rebuild the single-file version.
 
 ---
 
