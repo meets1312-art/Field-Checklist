@@ -14,6 +14,17 @@ RFP analysis is rule-based and works best on text PDFs. Always check the results
 
 Developers: edit `proposal-tool/index.html` (it loads `lib/pdf.min.js`), then run `python3 proposal-tool/build_single.py` to rebuild the single-file version.
 
+## Publishing (GitHub Pages)
+
+Nothing is published while you work. Changes go through branches and pull requests, so every change is tracked. To publish a finished version:
+
+1. Merge the pull request into the default branch.
+2. In the repo go to **Settings > Pages** and set **Source** to **GitHub Actions**. (Free GitHub Pages needs a public repository, so review what the repo contains first.)
+3. Go to **Actions > Publish Proposal Builder > Run workflow**.
+4. The site address appears in the run summary. Re-run the workflow to publish an updated version.
+
+Uploaded RFPs and your edits never leave each person's browser, so a public site does not expose them. Only the files in the repo become public.
+
 ---
 
 # EOD Field Sign-Off (`index.html`)
